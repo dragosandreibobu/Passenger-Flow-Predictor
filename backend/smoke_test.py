@@ -66,6 +66,18 @@ def main():
     print("PASSENGER FLOW PREDICTOR - SMOKE TEST")
     print("="*80 + "\n")
     
+    # 0. Root Redirect
+    print("0. Root Redirect")
+    print("-" * 80)
+    response = requests.get(BASE_URL, allow_redirects=False, timeout=5)
+    if response.status_code in [301, 302, 307, 308] and "dashboard" in response.headers.get("Location", ""):
+        print(f"PASS Root Redirect             To {response.headers['Location']}")
+        RESULTS.append(("PASS", "Root Redirect", f"To {response.headers['Location']}"))
+    else:
+        print(f"FAIL Root Redirect             Status {response.status_code}")
+        RESULTS.append(("FAIL", "Root Redirect", f"Status {response.status_code}"))
+    print()
+
     # 1. Health check
     print("1. Server Health")
     print("-" * 80)
@@ -97,18 +109,19 @@ def main():
     # 5. Static files
     print("5. Static Files")
     print("-" * 80)
-    check_file_exists("/mnt/c/Users/Dragos/OneDrive/Coding Python/Passenger-Flow-Predictor/backend/app/static/map/airport_map.jpg", 
+    backend_dir = Path(__file__).parent
+    check_file_exists(backend_dir / "app/static/map/airport_map.jpg", 
                      "Airport map image")
-    check_file_exists("/mnt/c/Users/Dragos/OneDrive/Coding Python/Passenger-Flow-Predictor/backend/app/static/dashboard/index.html",
+    check_file_exists(backend_dir / "app/static/dashboard/index.html",
                      "Dashboard HTML")
-    check_file_exists("/mnt/c/Users/Dragos/OneDrive/Coding Python/Passenger-Flow-Predictor/backend/app/static/dashboard/app.js",
+    check_file_exists(backend_dir / "app/static/dashboard/app.js",
                      "Dashboard JS")
     print()
     
     # 6. Video files
     print("6. Video Files")
     print("-" * 80)
-    cameras_dir = Path("/mnt/c/Users/Dragos/OneDrive/Coding Python/Passenger-Flow-Predictor/backend/test_assets/cameras")
+    cameras_dir = backend_dir / "test_assets/cameras"
     for i in range(1, 7):
         videos = list(cameras_dir.glob(f"{i}.*/*.mp4")) + \
                  list(cameras_dir.glob(f"{i}.*/*.avi")) + \

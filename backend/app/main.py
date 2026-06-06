@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from app.api import detect, cameras
 from fastapi.responses import JSONResponse
 from app.core.config import STATIC_DIR
@@ -10,6 +10,10 @@ app = FastAPI()
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/dashboard?v=ai_heatmap_final")
 
 @app.get("/api/health")
 def health():

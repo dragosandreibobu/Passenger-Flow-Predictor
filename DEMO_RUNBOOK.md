@@ -28,8 +28,9 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 
 ### 3. Open Dashboard
 ```
-http://localhost:8000/dashboard
+http://localhost:8000/
 ```
+(Redirects to `/dashboard?v=ai_heatmap_final`)
 
 You should see:
 - ✅ Airport map image
@@ -48,6 +49,7 @@ python smoke_test.py
 
 Expected output:
 ```
+PASS Root Redirect             To /dashboard?v=ai_heatmap_final
 PASS /api/health
 PASS GET /api/cameras (returns 6 cameras)
 PASS GET /api/cameras/cam_checkin
