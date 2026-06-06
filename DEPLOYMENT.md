@@ -74,15 +74,21 @@ CAMERA_VIDEO_ROOT=test_assets/cameras
 
 ## Render Environment
 
-Set these environment variables on Render:
+Set these environment variables on Render for optimal performance:
 
 ```text
 CAMERA_VIDEO_ROOT=test_assets/cameras_deploy
 YOLO_MODEL_NAME=yolov8n.pt
 INFERENCE_IMAGE_SIZE=320
-MAX_ANALYSIS_WIDTH=720
+MAX_ANALYSIS_WIDTH=640
 PERSON_CONFIDENCE_THRESHOLD=0.30
 ```
+
+## Demo Mode (Preprocessed)
+
+The dashboard now defaults to **Preprocessed** mode. This mode uses simulated detections to provide an instant, smooth experience without taxing the server's CPU. It is highly recommended for public demos on Render Free tier.
+
+To test real AI inference, switch the "Mode" selector to **Live AI Feed**.
 
 ## YOLO Tuning Examples
 

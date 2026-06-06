@@ -701,3 +701,69 @@ details summary {
         width: 100%;
     }
 }
+
+@media (max-width: 480px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .header h1 {
+        font-size: 1.1rem;
+    }
+
+    .status-indicator {
+        padding: 4px 10px;
+        font-size: 0.7rem;
+    }
+
+    .section-title h2, 
+    .analysis-header h2 {
+        font-size: 0.9rem;
+    }
+
+    .video-controls {
+        gap: 8px;
+    }
+
+    .video-time, 
+    #autoAnalyzeStatus,
+    .secondary-action {
+        padding: 5px 8px;
+        font-size: 0.75rem;
+    }
+
+    .camera-marker {
+        --heat-size: 38px !important;
+    }
+
+    .marker-cam {
+        font-size: 0.5rem;
+    }
+
+    .marker-count {
+        font-size: 0.8rem;
+    }
+
+    .camera-list-btn {
+        font-size: 0.85rem;
+        padding: 6px 8px;
+    }
+
+    .overlay-camera {
+        font-size: 0.9rem;
+    }
+
+    .overlay-metrics span, 
+    .zone-chip {
+        padding: 4px 8px;
+        font-size: 0.75rem;
+    }
+
+    .feed-performance-panel span {
+        padding: 6px;
+        font-size: 0.75rem;
+    }
+}

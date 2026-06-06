@@ -6,7 +6,7 @@ let isAnalyzing = false;
 let autoAnalyzeTimer = null;
 let aiFeedTimer = null;
 let aiFeedActive = false;
-let feedMode = "ai";
+let feedMode = "preprocessed";
 let lastInferenceMs = 0;
 let activeRequestSeq = 0;
 let allCameraAnalysisActive = false;
@@ -17,7 +17,7 @@ let isPrimingAllCameras = false;
 const cameraPlaybackState = {};
 const cameraStats = {};
 
-const MIN_AI_INTERVAL_MS = 300;
+const MIN_AI_INTERVAL_MS = 500;
 const AI_SAFETY_MARGIN_MS = 150;
 const AI_FEED_DELAY_WARNING_MS = 3000;
 const ALL_CAMERA_SAFETY_MARGIN_MS = 250;
@@ -190,7 +190,9 @@ function cameraUrl(cameraId) {
 function getFeedMode() {
   const modeSelect = el("feedMode");
   const value = modeSelect ? modeSelect.value : feedMode;
-  return value === "raw" ? "raw" : "ai";
+  if (value === "raw") return "raw";
+  if (value === "ai") return "ai";
+  return "preprocessed";
 }
 
 function getMinimumAiIntervalMs() {
@@ -308,8 +310,17 @@ function updatePerformancePanel(inferenceMs = null, backendStatus = null, nextDe
   const backendStatusNode = el("backendStatus");
   const nextFrameNode = el("nextFrameInMs");
 
-  if (feedModeStatus) feedModeStatus.textContent = currentMode === "ai" ? "AI" : "Raw";
-  if (aiIntervalStatus) aiIntervalStatus.textContent = currentMode === "ai" ? `Adaptive, min ${getMinimumAiIntervalMs()} ms` : "Manual";
+  if (feedModeStatus) {
+    if (currentMode === "preprocessed") feedModeStatus.textContent = "Demo";
+    else if (currentMode === "ai") feedModeStatus.textContent = "Live AI";
+    else feedModeStatus.textContent = "Raw";
+  }
+  
+  if (aiIntervalStatus) {
+    if (currentMode === "preprocessed") aiIntervalStatus.textContent = "Instant";
+    else if (currentMode === "ai") aiIntervalStatus.textContent = `Adaptive, min ${getMinimumAiIntervalMs()} ms`;
+    else aiIntervalStatus.textContent = "Manual";
+  }
 
   if (Number.isFinite(inferenceMs)) {
     const rounded = Math.round(inferenceMs);
@@ -609,6 +620,8 @@ function updateFeedVisibility() {
   const overlay = el("feedOverlayStats");
   const analysisContent = el("analysisContent");
 
+  const isAiLike = feedMode === "ai" || feedMode === "preprocessed";
+
   if (video) {
     video.loop = true;
     video.muted = true;
@@ -618,11 +631,11 @@ function updateFeedVisibility() {
 
   if (image) {
     if (!image.getAttribute("src")) resetAiFeedImage();
-    image.style.display = feedMode === "ai" ? "block" : "none";
+    image.style.display = isAiLike ? "block" : "none";
   }
 
   if (overlay) overlay.style.display = "block";
-  if (analysisContent) analysisContent.style.display = feedMode === "ai" ? "none" : "flex";
+  if (analysisContent) analysisContent.style.display = isAiLike ? "none" : "flex";
   updatePerformancePanel(lastInferenceMs || null, null, null);
   updateFeedOverlayStats();
 }
@@ -642,11 +655,13 @@ function updateFeedOverlayStats() {
   const counts = stats?.counts || {};
   const chips = Object.keys(counts).length ? Object.entries(counts) : [["waiting", "-"], ["outside", "-"]];
 
+  const modeLabel = feedMode === "preprocessed" ? "DEMO FEED" : (feedMode === "ai" ? "AI FEED" : "RAW FEED");
+
   overlay.innerHTML = `
     <div class="feed-overlay-top">
       <div>
         <div class="overlay-camera">${escapeHtml(selectedCamera?.shortName || selectedCamera?.name || "No Camera")}</div>
-        <div class="overlay-sub">CAM ${escapeHtml(selectedCamera?.order || "-")} - ${getFeedMode() === "ai" ? "AI FEED" : "RAW FEED"} - ${formatClock(currentTime)}</div>
+        <div class="overlay-sub">CAM ${escapeHtml(selectedCamera?.order || "-")} - ${modeLabel} - ${formatClock(currentTime)}</div>
       </div>
       <div class="overlay-metrics">
         <span>People <strong>${escapeHtml(total)}</strong></span>
@@ -823,7 +838,8 @@ async function analyzeSelectedCamera(useManualTimestamp = false, options = {}) {
       }
     }, AI_FEED_DELAY_WARNING_MS);
 
-    const url = `/api/cameras/${encodeURIComponent(requestCameraId)}/analyze-snapshot?timestamp_seconds=${encodeURIComponent(timestamp)}`;
+    const isDemo = getFeedMode() === "preprocessed";
+    const url = `/api/cameras/${encodeURIComponent(requestCameraId)}/analyze-snapshot?timestamp_seconds=${encodeURIComponent(timestamp)}${isDemo ? '&demo=true' : ''}`;
     const response = await fetch(url, { method: "POST", cache: "no-store" });
     const elapsed = performance.now() - start;
     clearTimeout(delayTimer);
@@ -1072,7 +1088,7 @@ function stopAiFeedLoop() {
 }
 
 async function aiFeedTick() {
-  if (!aiFeedActive || getFeedMode() !== "ai" || !selectedCameraId) return;
+  if (!aiFeedActive || (getFeedMode() !== "ai" && getFeedMode() !== "preprocessed") || !selectedCameraId) return;
 
   if (!isAnalyzing) {
     const result = await analyzeSelectedCamera(false, {
@@ -1085,17 +1101,19 @@ async function aiFeedTick() {
     lastInferenceMs = elapsed;
   }
 
-  const nextDelay = Math.max(getMinimumAiIntervalMs(), lastInferenceMs + AI_SAFETY_MARGIN_MS);
+  const currentMode = getFeedMode();
+  const baseInterval = currentMode === "preprocessed" ? 200 : getMinimumAiIntervalMs();
+  const nextDelay = Math.max(baseInterval, lastInferenceMs + (currentMode === "preprocessed" ? 50 : AI_SAFETY_MARGIN_MS));
   const backendStatus = backendStatusFromElapsed(lastInferenceMs);
   updatePerformancePanel(lastInferenceMs, backendStatus, nextDelay);
 
-  if (backendStatus === "Slow") {
+  if (backendStatus === "Slow" && currentMode === "ai") {
     setVideoStatus("AI feed throttled", true);
-  } else if (aiFeedActive && getFeedMode() === "ai") {
-    setVideoStatus("AI feed live");
+  } else if (aiFeedActive && (currentMode === "ai" || currentMode === "preprocessed") && selectedCameraId) {
+    setVideoStatus(currentMode === "preprocessed" ? "Demo mode active" : "AI feed live");
   }
 
-  if (aiFeedActive && getFeedMode() === "ai" && selectedCameraId) {
+  if (aiFeedActive && (getFeedMode() === "ai" || getFeedMode() === "preprocessed") && selectedCameraId) {
     aiFeedTimer = setTimeout(aiFeedTick, nextDelay);
   }
 }
@@ -1103,7 +1121,8 @@ async function aiFeedTick() {
 function startAiFeedLoop() {
   stopAiFeedLoop();
   updateFeedVisibility();
-  if (getFeedMode() !== "ai" || !selectedCameraId) return;
+  const currentMode = getFeedMode();
+  if ((currentMode !== "ai" && currentMode !== "preprocessed") || !selectedCameraId) return;
 
   aiFeedActive = true;
   aiFeedTimer = setTimeout(aiFeedTick, 0);
@@ -1113,7 +1132,7 @@ function handleFeedModeChange() {
   feedMode = getFeedMode();
   updateFeedVisibility();
 
-  if (feedMode === "ai") {
+  if (feedMode === "ai" || feedMode === "preprocessed") {
     startAiFeedLoop();
   } else {
     activeRequestSeq++;
@@ -1163,7 +1182,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const feedModeSelect = el("feedMode");
   if (feedModeSelect) {
-    feedModeSelect.value = "ai";
+    feedModeSelect.value = "preprocessed";
     feedModeSelect.addEventListener("change", handleFeedModeChange);
   }
 

@@ -111,7 +111,7 @@ def get_video(camera_id: str):
     return FileResponse(video_path, media_type="video/mp4")
 
 @router.post("/cameras/{camera_id}/analyze-snapshot")
-def analyze_snapshot(camera_id: str, timestamp_seconds: float = Query(0)):
+def analyze_snapshot(camera_id: str, timestamp_seconds: float = Query(0), demo: bool = Query(False)):
     cameras = load_cameras()
     camera = None
     for cam in cameras:
@@ -129,14 +129,20 @@ def analyze_snapshot(camera_id: str, timestamp_seconds: float = Query(0)):
     try:
         # Open video and extract frame
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise Exception(f"Could not open video file: {video_path}")
+            
         fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            fps = 25.0 # Fallback for some video containers
+            
         frame_number = int(timestamp_seconds * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
         cap.release()
         
-        if not ret:
-            raise Exception("Failed to read frame from video")
+        if not ret or frame is None:
+            raise Exception(f"Failed to read frame at {timestamp_seconds}s from {video_path}")
         
         # Convert BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -146,6 +152,7 @@ def analyze_snapshot(camera_id: str, timestamp_seconds: float = Query(0)):
             frame_rgb,
             camera["zone_camera_id"],
             return_metadata=True,
+            force_demo=demo
         )
         
         # Draw annotations

@@ -139,18 +139,22 @@ def run_mock_detection(camera_id, zone_scale):
         })
     return detections
 
-def detect_people_and_count_zones(image_np, camera_id, return_metadata=False):
+def detect_people_and_count_zones(image_np, camera_id, return_metadata=False, force_demo=False):
     """Core detection logic reused by both image upload and camera snapshot endpoints."""
+    # Ensure image is RGB and uint8 to avoid rendering issues
+    if image_np.dtype != np.uint8:
+        image_np = (image_np * 255).astype(np.uint8) if image_np.max() <= 1.0 else image_np.astype(np.uint8)
+    
     original_height, original_width = image_np.shape[:2]
     analysis_np, zone_scale = resize_for_analysis(image_np)
     input_height, input_width = analysis_np.shape[:2]
 
     start = time.perf_counter()
     
-    if DEMO_MODE:
+    if DEMO_MODE or force_demo:
         # Skip inference and return simulated data
         detections = run_mock_detection(camera_id, zone_scale)
-        inference_ms = 10.0 # Simulated speed
+        inference_ms = 15.0 # Simulated speed
     else:
         results = run_model(analysis_np)
         inference_ms = (time.perf_counter() - start) * 1000
