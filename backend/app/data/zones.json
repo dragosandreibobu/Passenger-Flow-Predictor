@@ -1,0 +1,25 @@
+{
+  "zones": [
+    {
+      "id": "checkin",
+      "name": "Check-in Queue",
+      "camera_id": "cam_checkin_01",
+      "type": "checkin",
+      "polygon": [[100, 100], [500, 100], [550, 500], [80, 500]]
+    },
+    {
+      "id": "bag_drop",
+      "name": "Bag Drop",
+      "camera_id": "cam_checkin_01",
+      "type": "bag_drop",
+      "polygon": [[600, 100], [900, 100], [900, 500], [600, 500]]
+    },
+    {
+      "id": "boarding",
+      "name": "Boarding Area",
+      "camera_id": "cam_checkin_01",
+      "type": "boarding",
+      "polygon": [[950, 100], [1250, 100], [1250, 500], [950, 500]]
+    }
+  ]
+}

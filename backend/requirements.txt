@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+ultralytics
+torch
+opencv-python
+pillow
+python-multipart
+numpy

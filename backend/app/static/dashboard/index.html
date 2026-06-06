@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Airport CCTV Control Room</title>
+    <link rel="stylesheet" href="/static/dashboard/style.css?v=ai_heatmap_final">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div>
+                <h1>AI Airport CCTV Control Room</h1>
+                <p>Passenger-flow graph and YOLO annotated local camera feeds</p>
+            </div>
+            <div class="status-indicator" id="statusIndicator">ONLINE</div>
+        </header>
+
+        <main class="content">
+            <section class="map-section">
+                <div class="section-title">
+                    <h2>Terminal Flow Map</h2>
+                    <span>Logical path to aircraft</span>
+                </div>
+                <div class="map-wrapper">
+                    <img src="/static/map/airport_map.jpg" alt="Airport Map" id="mapImage" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22600%22 height=%22400%22%3E%3Crect fill=%22%23080f1f%22 width=%22600%22 height=%22400%22/%3E%3Ctext fill=%22%236b7c93%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3EAirport Map Placeholder%3C/text%3E%3C/svg%3E'">
+                    <svg id="mapCorridors" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+                    <div class="camera-overlay" id="cameraButtons"></div>
+                </div>
+                <div class="camera-list-section">
+                    <h3>Cameras</h3>
+                    <div id="cameraListButtons"></div>
+                </div>
+                <p class="map-label">Heat: green low, amber medium, red high. Lines show passenger direction.</p>
+            </section>
+
+            <section class="analysis-section">
+                <div class="analysis-header">
+                    <div>
+                        <h2 id="cameraName">Select a Camera</h2>
+                        <span id="selectedCameraDebug">None</span>
+                    </div>
+                    <div class="feed-mode-control">
+                        <label>
+                            Mode
+                            <select id="feedMode">
+                                <option value="ai" selected>AI Feed</option>
+                                <option value="raw">Raw Feed</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="video-panel" id="videoPanel" style="display:none;">
+                    <div class="video-controls">
+                        <span class="video-time" id="videoTime">0:00</span>
+                        <span class="video-time">Frame <span id="currentVideoTime">0.0</span>s</span>
+                        <label>
+                            Minimum AI interval
+                            <input id="aiFeedIntervalMs" type="number" value="300" min="300" step="50">
+                        </label>
+                        <label class="secondary-toggle">
+                            <input type="checkbox" id="autoAnalyzeCheckbox"> Raw auto analyze
+                        </label>
+                        <span id="autoAnalyzeStatus">AI Feed ready</span>
+                    </div>
+
+                    <div id="mainFeed">
+                        <video id="cameraVideo" class="live-video" muted autoplay playsinline loop style="display:none;"></video>
+                        <img id="aiFeedImage" class="main-ai-feed" alt="AI annotated camera feed">
+                        <div id="feedOverlayStats"></div>
+                        <div id="feedWarning"></div>
+                    </div>
+
+                    <div class="video-status" id="videoStatus"></div>
+                    <div class="feed-performance-panel" id="feedPerformancePanel">
+                        <span>Feed Mode <strong id="feedModeStatus">AI</strong></span>
+                        <span>AI Refresh <strong id="aiIntervalStatus">Adaptive</strong></span>
+                        <span>Last inference <strong id="lastInferenceMs">-</strong></span>
+                        <span>Approx AI FPS <strong id="effectiveFps">-</strong></span>
+                        <span>Next frame in <strong id="nextFrameInMs">-</strong></span>
+                        <span>Backend <strong id="backendStatus">OK</strong></span>
+                    </div>
+                    <div class="optimization-note">
+                        Prototype uses YOLOv8n for fast local inference. Production can use ONNX Runtime, TensorRT, OpenVINO, or edge GPU acceleration.
+                    </div>
+                    <div class="video-info" id="videoInfo" style="display:none;">Video file missing for this camera</div>
+                </div>
+
+                <div class="snapshot-control">
+                    <input type="number" id="timestampInput" value="0" min="0" step="1" placeholder="Timestamp sec">
+                    <button id="analyzeBtn" disabled>Analyze Current Frame</button>
+                    <button id="manualAnalyzeBtn" disabled>Analyze Manual Timestamp</button>
+                </div>
+
+                <div class="analysis-content" id="analysisContent">
+                    <div class="placeholder">Select a camera to start the AI feed</div>
+                </div>
+
+                <div class="status-panel" id="statusPanel" style="display:none;">
+                    <div class="panel-row">
+                        <div class="panel-item">
+                            <span class="label">Risk</span>
+                            <span class="value" id="riskLevel">-</span>
+                        </div>
+                        <div class="panel-item">
+                            <span class="label">People</span>
+                            <span class="value" id="totalPeople">-</span>
+                        </div>
+                        <div class="panel-item">
+                            <span class="label">Detections</span>
+                            <span class="value" id="detectionsCount">-</span>
+                        </div>
+                    </div>
+                    <div class="summary" id="summary">-</div>
+                </div>
+
+                <details class="counts-panel" id="countsPanel" style="display:none;">
+                    <summary>Detailed Zone Counts</summary>
+                    <div class="counts-grid" id="countsGrid"></div>
+                </details>
+
+                <div class="error-message" id="errorMessage" style="display:none;"></div>
+                <div class="loading" id="loading" style="display:none;">
+                    <div class="spinner"></div>
+                    <p>Analyzing frame...</p>
+                </div>
+
+                <div class="debug-panel" id="debugPanel">
+                    <details>
+                        <summary>Debug</summary>
+                        <div>
+                            <div>JS Loaded: <span id="jsLoaded">-</span></div>
+                            <div>Cameras: <span id="camerasCount">0</span></div>
+                            <div>Last Error: <span id="lastError">None</span></div>
+                        </div>
+                    </details>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/dashboard/app.js?v=ai_heatmap_final"></script>
+</body>
+</html>

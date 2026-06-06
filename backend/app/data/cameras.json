@@ -1,0 +1,52 @@
+{
+  "cameras": [
+    {
+      "id": "cam_checkin",
+      "name": "1. Check-in",
+      "type": "checkin",
+      "folder_name": "1.check-in",
+      "zone_camera_id": "cam_checkin_01",
+      "map_position": {"x": 22, "y": 65}
+    },
+    {
+      "id": "cam_access",
+      "name": "2. Control acces",
+      "type": "access_control",
+      "folder_name": "2.control acces",
+      "zone_camera_id": "cam_access_01",
+      "map_position": {"x": 35, "y": 58}
+    },
+    {
+      "id": "cam_security",
+      "name": "3. Control de securitate",
+      "type": "security",
+      "folder_name": "3.control de securitate",
+      "zone_camera_id": "cam_security_01",
+      "map_position": {"x": 48, "y": 48}
+    },
+    {
+      "id": "cam_to_t4",
+      "name": "4. Spre sala de pasageri T4",
+      "type": "corridor",
+      "folder_name": "4.spre sala de pasageri T4",
+      "zone_camera_id": "cam_to_t4_01",
+      "map_position": {"x": 60, "y": 42}
+    },
+    {
+      "id": "cam_boarding_gate",
+      "name": "5. Sala pasageri + poarta imbarcare",
+      "type": "boarding",
+      "folder_name": "5.sala de pasageri+poarta de imbarcare",
+      "zone_camera_id": "cam_boarding_01",
+      "map_position": {"x": 75, "y": 40}
+    },
+    {
+      "id": "cam_jetbridge",
+      "name": "6. Interior burduf",
+      "type": "jetbridge",
+      "folder_name": "6.interior burduf",
+      "zone_camera_id": "cam_jetbridge_01",
+      "map_position": {"x": 86, "y": 34}
+    }
+  ]
+}
