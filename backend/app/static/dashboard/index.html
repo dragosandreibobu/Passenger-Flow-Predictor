@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Airport CCTV Control Room</title>
-    <link rel="stylesheet" href="/static/dashboard/style.css?v=ai_heatmap_final">
+    <link rel="stylesheet" href="/static/dashboard/style.css?v=ai_heatmap_final_2">
 </head>
 <body>
     <div class="container">
@@ -62,6 +62,7 @@
                         <label class="secondary-toggle">
                             <input type="checkbox" id="autoAnalyzeCheckbox"> Raw auto analyze
                         </label>
+                        <button id="allCamerasAnalyzeBtn" class="secondary-action" type="button">Monitor All Cameras</button>
                         <span id="autoAnalyzeStatus">AI Feed ready</span>
                     </div>
 
@@ -81,17 +82,10 @@
                         <span>Next frame in <strong id="nextFrameInMs">-</strong></span>
                         <span>Backend <strong id="backendStatus">OK</strong></span>
                     </div>
-                    <div class="optimization-note">
-                        Prototype uses YOLOv8n for fast local inference. Production can use ONNX Runtime, TensorRT, OpenVINO, or edge GPU acceleration.
-                    </div>
                     <div class="video-info" id="videoInfo" style="display:none;">Video file missing for this camera</div>
                 </div>
 
-                <div class="snapshot-control">
-                    <input type="number" id="timestampInput" value="0" min="0" step="1" placeholder="Timestamp sec">
-                    <button id="analyzeBtn" disabled>Analyze Current Frame</button>
-                    <button id="manualAnalyzeBtn" disabled>Analyze Manual Timestamp</button>
-                </div>
+                <input type="hidden" id="timestampInput" value="0">
 
                 <div class="analysis-content" id="analysisContent">
                     <div class="placeholder">Select a camera to start the AI feed</div>
@@ -140,6 +134,6 @@
         </main>
     </div>
 
-    <script src="/static/dashboard/app.js?v=ai_heatmap_final"></script>
+    <script src="/static/dashboard/app.js?v=ai_heatmap_final_2"></script>
 </body>
 </html>

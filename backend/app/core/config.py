@@ -11,5 +11,6 @@ PERSON_CONFIDENCE_THRESHOLD = float(os.getenv("PERSON_CONFIDENCE_THRESHOLD", "0.
 INFERENCE_IMAGE_SIZE = int(os.getenv("INFERENCE_IMAGE_SIZE", "416"))
 YOLO_DEVICE = os.getenv("YOLO_DEVICE", "auto")
 MAX_ANALYSIS_WIDTH = int(os.getenv("MAX_ANALYSIS_WIDTH", "960"))
+DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 
 os.makedirs(ANNOTATED_DIR, exist_ok=True)

@@ -47,6 +47,22 @@
       "folder_name": "6.interior burduf",
       "zone_camera_id": "cam_jetbridge_01",
       "map_position": {"x": 86, "y": 34}
+    },
+    {
+      "id": "cam_checkin_3_8",
+      "name": "7. Check-in 3-8 Ansamblu",
+      "type": "checkin",
+      "folder_name": "7.check-in 3-8 ansamblu",
+      "zone_camera_id": "cam_checkin_3_8_01",
+      "map_position": {"x": 24, "y": 72}
+    },
+    {
+      "id": "cam_egate_business",
+      "name": "8. E Gate 13-14 Business",
+      "type": "boarding",
+      "folder_name": "8.e gate 13-14 business",
+      "zone_camera_id": "cam_egate_business_01",
+      "map_position": {"x": 94, "y": 42}
     }
   ]
 }

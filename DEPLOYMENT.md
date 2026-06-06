@@ -16,7 +16,7 @@ Deployment-friendly compressed copies live under:
 backend/test_assets/cameras_deploy/
 ```
 
-The compressed deploy folder preserves the same six camera subfolders:
+The compressed deploy folder preserves the camera subfolders:
 
 ```text
 1.check-in/
@@ -25,9 +25,11 @@ The compressed deploy folder preserves the same six camera subfolders:
 4.spre sala de pasageri T4/
 5.sala de pasageri+poarta de imbarcare/
 6.interior burduf/
+7.check-in 3-8 ansamblu/
+8.e gate 13-14 business/
 ```
 
-All six cameras must remain available in both local and deploy modes.
+All cameras must remain available in both local and deploy modes. The two newer source videos were originally added as loose files under `backend/test_assets/cameras/`; local app copies were created in camera folders so the same folder-based pipeline works for development and deployment. The loose originals remain untouched.
 
 ## Regenerate Deploy Videos
 

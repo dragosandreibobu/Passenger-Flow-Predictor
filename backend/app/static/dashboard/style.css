@@ -177,10 +177,27 @@ input[type="number"] {
     pointer-events: none;
 }
 
-.flow-corridor {
+.flow-corridor,
+.flow-corridor-glow {
+    fill: none;
     stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.flow-corridor {
     opacity: 0.84;
-    filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.25));
+    filter: url(#corridorGlow);
+    stroke-dasharray: 10 7;
+    animation: corridorMove 1.9s linear infinite;
+}
+
+.flow-corridor-glow {
+    opacity: 0.16;
+    filter: url(#corridorGlow);
+}
+
+@keyframes corridorMove {
+    to { stroke-dashoffset: -34; }
 }
 
 .corridor-high {
@@ -204,7 +221,8 @@ input[type="number"] {
     transform: translate(-50%, -50%);
     border: 2px solid rgba(255, 255, 255, 0.82);
     border-radius: 50%;
-    color: #06101a;
+    background: var(--heat-color, var(--blue));
+    color: var(--heat-text, #06101a);
     cursor: pointer;
     pointer-events: auto;
     display: flex;
@@ -214,7 +232,7 @@ input[type="number"] {
     gap: 1px;
     font-weight: 800;
     z-index: 10;
-    box-shadow: 0 0 18px rgba(79, 140, 255, 0.36);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08), 0 0 22px var(--heat-glow, rgba(79, 140, 255, 0.45));
     transition: transform 0.16s ease, box-shadow 0.16s ease, width 0.16s ease, height 0.16s ease;
 }
 
@@ -239,21 +257,21 @@ input[type="number"] {
 }
 
 .heat-low {
-    background: var(--green);
+    background: var(--heat-color, var(--green));
 }
 
 .heat-medium {
-    background: var(--amber);
+    background: var(--heat-color, var(--amber));
 }
 
 .heat-high {
-    background: var(--red);
+    background: var(--heat-color, var(--red));
     color: #fff;
     animation: heatPulse 0.9s ease-in-out infinite alternate;
 }
 
 .heat-unknown {
-    background: var(--blue);
+    background: var(--heat-color, var(--blue));
     color: #fff;
 }
 
@@ -339,6 +357,23 @@ input[type="number"] {
 
 .secondary-toggle {
     opacity: 0.7;
+}
+
+.secondary-action {
+    border: 1px solid rgba(125, 211, 252, 0.28);
+    border-radius: 999px;
+    padding: 7px 11px;
+    cursor: pointer;
+    color: var(--text);
+    background: rgba(7, 16, 29, 0.75);
+}
+
+.secondary-action:hover,
+.secondary-action.active {
+    border-color: var(--cyan);
+    color: #03111c;
+    background: var(--cyan);
+    box-shadow: 0 0 22px rgba(34, 211, 238, 0.24);
 }
 
 #mainFeed {

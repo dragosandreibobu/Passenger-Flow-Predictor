@@ -2,7 +2,7 @@ fastapi
 uvicorn
 ultralytics
 torch
-opencv-python
+opencv-python-headless
 pillow
 python-multipart
 numpy

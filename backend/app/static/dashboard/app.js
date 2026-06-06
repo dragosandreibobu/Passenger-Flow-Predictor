@@ -9,6 +9,10 @@ let aiFeedActive = false;
 let feedMode = "ai";
 let lastInferenceMs = 0;
 let activeRequestSeq = 0;
+let allCameraAnalysisActive = false;
+let allCameraAnalysisTimer = null;
+let allCameraAnalysisIndex = 0;
+let isPrimingAllCameras = false;
 
 const cameraPlaybackState = {};
 const cameraStats = {};
@@ -16,6 +20,7 @@ const cameraStats = {};
 const MIN_AI_INTERVAL_MS = 300;
 const AI_SAFETY_MARGIN_MS = 150;
 const AI_FEED_DELAY_WARNING_MS = 3000;
+const ALL_CAMERA_SAFETY_MARGIN_MS = 250;
 const AI_FEED_PLACEHOLDER_SRC = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
 const FLOW_NODES = {
@@ -60,15 +65,31 @@ const FLOW_NODES = {
     area: "Aircraft funnel",
     position: { x: 95, y: 80 },
     capacity: 120
+  },
+  cam_checkin_3_8: {
+    order: 7,
+    shortName: "Check-in 3-8",
+    area: "Check-in overview",
+    position: { x: 24, y: 18 },
+    capacity: 620
+  },
+  cam_egate_business: {
+    order: 8,
+    shortName: "E Gate 13-14",
+    area: "Business gate lounge",
+    position: { x: 94, y: 58 },
+    capacity: 260
   }
 };
 
 const FLOW_EDGES = [
   ["cam_checkin", "cam_access"],
+  ["cam_checkin_3_8", "cam_access"],
   ["cam_access", "cam_security"],
   ["cam_security", "cam_to_t4"],
   ["cam_to_t4", "cam_boarding_gate"],
-  ["cam_boarding_gate", "cam_jetbridge"]
+  ["cam_boarding_gate", "cam_egate_business"],
+  ["cam_egate_business", "cam_jetbridge"]
 ];
 
 const FALLBACK_CAMERAS = [
@@ -77,7 +98,9 @@ const FALLBACK_CAMERAS = [
   { id: "cam_security", name: "3. Control de securitate", video_found: true, video_url: "/api/cameras/cam_security/video" },
   { id: "cam_to_t4", name: "4. Spre sala de pasageri T4", video_found: true, video_url: "/api/cameras/cam_to_t4/video" },
   { id: "cam_boarding_gate", name: "5. Sala pasageri + poarta imbarcare", video_found: true, video_url: "/api/cameras/cam_boarding_gate/video" },
-  { id: "cam_jetbridge", name: "6. Interior burduf", video_found: true, video_url: "/api/cameras/cam_jetbridge/video" }
+  { id: "cam_jetbridge", name: "6. Interior burduf", video_found: true, video_url: "/api/cameras/cam_jetbridge/video" },
+  { id: "cam_checkin_3_8", name: "7. Check-in 3-8 Ansamblu", video_found: true, video_url: "/api/cameras/cam_checkin_3_8/video" },
+  { id: "cam_egate_business", name: "8. E Gate 13-14 Business", video_found: true, video_url: "/api/cameras/cam_egate_business/video" }
 ];
 
 function el(id) {
@@ -212,12 +235,42 @@ function heatClassForStats(stats) {
   return `heat-${riskFromTotal(stats.total_people)}`;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function interpolateColor(start, end, ratio) {
+  const t = clamp(ratio, 0, 1);
+  const a = start.match(/\w\w/g).map((part) => parseInt(part, 16));
+  const b = end.match(/\w\w/g).map((part) => parseInt(part, 16));
+  const mixed = a.map((value, index) => Math.round(value + (b[index] - value) * t));
+  return `rgb(${mixed[0]}, ${mixed[1]}, ${mixed[2]})`;
+}
+
+function pressureScore(totalPeople) {
+  if (!Number.isFinite(Number(totalPeople))) return null;
+  return clamp(Number(totalPeople) / 24, 0, 1);
+}
+
+function heatColorForTotal(totalPeople) {
+  const score = pressureScore(totalPeople);
+  if (score === null) return "#4f8cff";
+  if (score < 0.25) return interpolateColor("22d3ee", "1fe37c", score / 0.25);
+  if (score < 0.5) return interpolateColor("1fe37c", "facc15", (score - 0.25) / 0.25);
+  if (score < 0.75) return interpolateColor("facc15", "ff8a00", (score - 0.5) / 0.25);
+  return interpolateColor("ff8a00", "ff3b30", (score - 0.75) / 0.25);
+}
+
+function heatGlowForTotal(totalPeople) {
+  const score = pressureScore(totalPeople);
+  if (score === null) return "rgba(79, 140, 255, 0.45)";
+  if (score < 0.35) return "rgba(31, 227, 124, 0.45)";
+  if (score < 0.7) return "rgba(255, 176, 32, 0.55)";
+  return "rgba(255, 59, 48, 0.72)";
+}
+
 function heatColorForStats(stats) {
-  const risk = stats ? riskFromTotal(stats.total_people) : "unknown";
-  if (risk === "high") return "#ff3b30";
-  if (risk === "medium") return "#ffb020";
-  if (risk === "low") return "#1fe37c";
-  return "#4f8cff";
+  return heatColorForTotal(stats?.total_people);
 }
 
 function backendStatusFromElapsed(elapsedMs) {
@@ -319,6 +372,7 @@ async function loadCameras() {
   renderCameraMarkers();
   renderCameraListButtons();
   renderCorridors();
+  primeAllCameraStats();
 }
 
 function getCameraById(cameraId) {
@@ -363,6 +417,9 @@ function renderCameraMarkers() {
     marker.style.left = `${camera.map_position.x}%`;
     marker.style.top = `${camera.map_position.y}%`;
     marker.style.setProperty("--heat-size", `${markerSizeForTotal(total)}px`);
+    marker.style.setProperty("--heat-color", heatColorForTotal(total));
+    marker.style.setProperty("--heat-glow", heatGlowForTotal(total));
+    marker.style.setProperty("--heat-text", riskFromTotal(Number(total)) === "high" ? "#fff" : "#06101a");
     marker.innerHTML = `
       <span class="marker-cam">CAM ${camera.order}</span>
       <span class="marker-count">${total ?? "-"}</span>
@@ -387,22 +444,24 @@ function renderCorridors() {
   const svg = el("mapCorridors");
   if (!svg) return;
 
-  svg.innerHTML = `
-    <defs>
-      <marker id="arrow-low" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#1fe37c"></path>
-      </marker>
-      <marker id="arrow-medium" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb020"></path>
-      </marker>
-      <marker id="arrow-high" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff3b30"></path>
-      </marker>
-      <marker id="arrow-unknown" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#4f8cff"></path>
-      </marker>
-    </defs>
+  svg.innerHTML = "";
+
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
+  filter.setAttribute("id", "corridorGlow");
+  filter.setAttribute("x", "-35%");
+  filter.setAttribute("y", "-35%");
+  filter.setAttribute("width", "170%");
+  filter.setAttribute("height", "170%");
+  filter.innerHTML = `
+    <feGaussianBlur stdDeviation="1.2" result="blur"></feGaussianBlur>
+    <feMerge>
+      <feMergeNode in="blur"></feMergeNode>
+      <feMergeNode in="SourceGraphic"></feMergeNode>
+    </feMerge>
   `;
+  defs.appendChild(filter);
+  svg.appendChild(defs);
 
   FLOW_EDGES.forEach(([fromId, toId]) => {
     const from = getCameraById(fromId);
@@ -411,21 +470,59 @@ function renderCorridors() {
 
     const fromStats = cameraStats[fromId];
     const toStats = cameraStats[toId];
-    const pressure = corridorPressure(fromStats, toStats);
     const maxPeople = Math.max(Number(fromStats?.total_people || 0), Number(toStats?.total_people || 0));
-    const width = Math.max(1.8, Math.min(6, 2 + maxPeople / 8));
-    const color = heatColorForStats(pressure === "unknown" ? null : { total_people: pressure === "high" ? 16 : pressure === "medium" ? 6 : 0 });
+    const pressure = riskFromTotal(maxPeople);
+    const width = Math.max(2.2, Math.min(7.2, 2.2 + maxPeople / 6));
+    const fromColor = heatColorForTotal(fromStats?.total_people);
+    const toColor = heatColorForTotal(toStats?.total_people);
+    const ids = `${fromId}-${toId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const gradientId = `corridorGradient-${ids}`;
+    const markerId = `corridorArrow-${ids}`;
 
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", from.map_position.x);
-    line.setAttribute("y1", from.map_position.y);
-    line.setAttribute("x2", to.map_position.x);
-    line.setAttribute("y2", to.map_position.y);
-    line.setAttribute("class", `flow-corridor corridor-${pressure}`);
-    line.setAttribute("stroke", color);
-    line.setAttribute("stroke-width", width);
-    line.setAttribute("marker-end", `url(#arrow-${pressure})`);
-    svg.appendChild(line);
+    const gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+    gradient.setAttribute("id", gradientId);
+    gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+    gradient.setAttribute("x1", from.map_position.x);
+    gradient.setAttribute("y1", from.map_position.y);
+    gradient.setAttribute("x2", to.map_position.x);
+    gradient.setAttribute("y2", to.map_position.y);
+    gradient.innerHTML = `
+      <stop offset="0%" stop-color="${fromColor}"></stop>
+      <stop offset="52%" stop-color="${heatColorForTotal(maxPeople)}"></stop>
+      <stop offset="100%" stop-color="${toColor}"></stop>
+    `;
+    defs.appendChild(gradient);
+
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", markerId);
+    marker.setAttribute("viewBox", "0 0 12 12");
+    marker.setAttribute("refX", "10");
+    marker.setAttribute("refY", "6");
+    marker.setAttribute("markerWidth", "3.8");
+    marker.setAttribute("markerHeight", "3.8");
+    marker.setAttribute("orient", "auto");
+    marker.innerHTML = `<path d="M1,2 L10.5,6 L1,10 L3.2,6 Z" fill="${toColor}" stroke="rgba(255,255,255,0.72)" stroke-width="0.55"></path>`;
+    defs.appendChild(marker);
+
+    const midX = (from.map_position.x + to.map_position.x) / 2;
+    const midY = (from.map_position.y + to.map_position.y) / 2;
+    const curveOffset = Math.max(-8, Math.min(8, (to.map_position.x - from.map_position.x) * 0.08));
+    const d = `M ${from.map_position.x} ${from.map_position.y} Q ${midX + curveOffset} ${midY - 4} ${to.map_position.x} ${to.map_position.y}`;
+
+    const glow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    glow.setAttribute("d", d);
+    glow.setAttribute("class", `flow-corridor-glow corridor-${pressure}`);
+    glow.setAttribute("stroke", `url(#${gradientId})`);
+    glow.setAttribute("stroke-width", width + 5);
+    svg.appendChild(glow);
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", `flow-corridor corridor-${pressure}`);
+    path.setAttribute("stroke", `url(#${gradientId})`);
+    path.setAttribute("stroke-width", width);
+    path.setAttribute("marker-end", `url(#${markerId})`);
+    svg.appendChild(path);
   });
 }
 
@@ -776,6 +873,144 @@ async function analyzeSelectedCamera(useManualTimestamp = false, options = {}) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function setAllCameraStatus(message) {
+  const autoStatus = el("autoAnalyzeStatus");
+  if (autoStatus) autoStatus.textContent = message;
+}
+
+function updateAllCameraButton() {
+  const button = el("allCamerasAnalyzeBtn");
+  if (!button) return;
+  button.classList.toggle("active", allCameraAnalysisActive);
+  if (isPrimingAllCameras) {
+    button.textContent = "Priming All Cameras";
+  } else {
+    button.textContent = allCameraAnalysisActive ? "Stop All-Camera Monitor" : "Monitor All Cameras";
+  }
+}
+
+function nextBackgroundTimestamp(cameraId) {
+  const previous = Number(cameraStats[cameraId]?.timestamp_seconds || 0);
+  return (previous + 2) % 30;
+}
+
+async function analyzeCameraForStats(camera, timestampSeconds = 0, options = {}) {
+  if (!camera || isAnalyzing) return null;
+
+  isAnalyzing = true;
+  const start = performance.now();
+
+  try {
+    const url = `/api/cameras/${encodeURIComponent(camera.id)}/analyze-snapshot?timestamp_seconds=${encodeURIComponent(timestampSeconds)}`;
+    const response = await fetch(url, { method: "POST", cache: "no-store" });
+    const elapsed = performance.now() - start;
+
+    if (!response.ok) {
+      let message = `Analysis failed with HTTP ${response.status}`;
+      try {
+        const errorBody = await response.json();
+        if (typeof errorBody.detail === "string") message = errorBody.detail;
+      } catch (parseError) {
+        console.warn("Could not parse background analysis error:", parseError);
+      }
+      throw new Error(message);
+    }
+
+    const result = await response.json();
+    if (result.camera_id !== camera.id) return null;
+
+    result._client_elapsed_ms = elapsed;
+    updateCameraStatsFromResult(result);
+    return result;
+  } catch (error) {
+    if (!options.silent) showError(`Map analysis failed for ${camera.shortName}: ${error.message}`, true);
+    return null;
+  } finally {
+    isAnalyzing = false;
+  }
+}
+
+async function primeAllCameraStats() {
+  if (isPrimingAllCameras || !cameras.length) return;
+
+  isPrimingAllCameras = true;
+  updateAllCameraButton();
+  setAllCameraStatus("Priming map heat");
+
+  for (const camera of cameras) {
+    let waits = 0;
+    while (isAnalyzing && waits < 30) {
+      await sleep(250);
+      waits += 1;
+    }
+    if (!isAnalyzing) {
+      await analyzeCameraForStats(camera, 0, { silent: true });
+      setAllCameraStatus(`Primed CAM ${camera.order}`);
+    }
+  }
+
+  isPrimingAllCameras = false;
+  updateAllCameraButton();
+  setAllCameraStatus(allCameraAnalysisActive ? "All-camera monitor active" : "AI Feed ready");
+  renderCorridors();
+}
+
+function stopAllCameraAnalysis() {
+  allCameraAnalysisActive = false;
+  if (allCameraAnalysisTimer) {
+    clearTimeout(allCameraAnalysisTimer);
+    allCameraAnalysisTimer = null;
+  }
+  updateAllCameraButton();
+  setAllCameraStatus(getFeedMode() === "ai" ? "AI Feed active" : "Off");
+}
+
+function startAllCameraAnalysis() {
+  if (!cameras.length) return;
+  allCameraAnalysisActive = true;
+  updateAllCameraButton();
+  setAllCameraStatus("All-camera monitor active");
+  scheduleAllCameraAnalysis(0);
+}
+
+function toggleAllCameraAnalysis() {
+  if (allCameraAnalysisActive) {
+    stopAllCameraAnalysis();
+  } else {
+    startAllCameraAnalysis();
+  }
+}
+
+function scheduleAllCameraAnalysis(delayMs) {
+  if (allCameraAnalysisTimer) clearTimeout(allCameraAnalysisTimer);
+  if (!allCameraAnalysisActive) return;
+  allCameraAnalysisTimer = setTimeout(allCameraAnalysisTick, delayMs);
+}
+
+async function allCameraAnalysisTick() {
+  if (!allCameraAnalysisActive || !cameras.length) return;
+
+  let elapsed = 600;
+  if (!isAnalyzing) {
+    const inactiveCameras = cameras.filter((camera) => camera.id !== selectedCameraId);
+    if (inactiveCameras.length) {
+      const camera = inactiveCameras[allCameraAnalysisIndex % inactiveCameras.length];
+      allCameraAnalysisIndex += 1;
+      setAllCameraStatus(`Scanning CAM ${camera.order}`);
+      const result = await analyzeCameraForStats(camera, nextBackgroundTimestamp(camera.id), { silent: true });
+      elapsed = Number(result?._client_elapsed_ms || result?.performance?.inference_ms || elapsed);
+      setAllCameraStatus("All-camera monitor active");
+    }
+  }
+
+  const nextDelay = Math.max(600, elapsed + ALL_CAMERA_SAFETY_MARGIN_MS);
+  scheduleAllCameraAnalysis(nextDelay);
+}
+
 function displayAnalysisResult(result, options = {}) {
   const updateAnalysisContent = options.updateAnalysisContent !== false;
   const content = el("analysisContent");
@@ -963,6 +1198,12 @@ document.addEventListener("DOMContentLoaded", () => {
     autoBox.checked = false;
     autoBox.addEventListener("change", setupAutoAnalyze);
     setupAutoAnalyze();
+  }
+
+  const allCamerasAnalyzeBtn = el("allCamerasAnalyzeBtn");
+  if (allCamerasAnalyzeBtn) {
+    allCamerasAnalyzeBtn.addEventListener("click", toggleAllCameraAnalysis);
+    updateAllCameraButton();
   }
 
   window.addEventListener("error", (event) => {
