@@ -8,7 +8,7 @@ Original camera videos are preserved locally under:
 backend/test_assets/cameras/
 ```
 
-Do not delete, overwrite, or move these originals. They are intentionally ignored by Git because they are heavy source assets.
+Do not delete, overwrite, or move these originals. The demo can keep source assets in the repository when needed, but processed/deploy copies must be generated into separate folders.
 
 Deployment-friendly compressed copies live under:
 
@@ -52,6 +52,23 @@ The script:
 
 If the speed filter is unsupported by the installed ffmpeg build, the script falls back to normal-speed compression.
 
+## Regenerate Preprocessed Videos
+
+Preprocessed videos are smooth H.264 MP4s with burned-in demo annotations. They are separate from raw and deploy videos:
+
+```text
+backend/test_assets/cameras_preprocessed/
+```
+
+From the backend folder:
+
+```powershell
+cd backend
+python prepare_preprocessed_videos.py --source test_assets/cameras_deploy --output test_assets/cameras_preprocessed --crf 28 --detections-fps 6 --force
+```
+
+The default generation mode uses fast deterministic annotations for smooth demo playback. To render real YOLO annotations offline instead, add `--real-yolo`; this is much slower.
+
 ## Switch Video Roots
 
 Local full-quality mode:
@@ -70,6 +87,7 @@ The default is:
 
 ```text
 CAMERA_VIDEO_ROOT=test_assets/cameras
+PREPROCESSED_CAMERA_VIDEO_ROOT=test_assets/cameras_preprocessed
 ```
 
 ## Render Environment
@@ -78,6 +96,7 @@ Set these environment variables on Render for optimal performance:
 
 ```text
 CAMERA_VIDEO_ROOT=test_assets/cameras_deploy
+PREPROCESSED_CAMERA_VIDEO_ROOT=test_assets/cameras_preprocessed
 YOLO_MODEL_NAME=yolov8n.pt
 INFERENCE_IMAGE_SIZE=320
 MAX_ANALYSIS_WIDTH=640
@@ -86,7 +105,7 @@ PERSON_CONFIDENCE_THRESHOLD=0.30
 
 ## Demo Mode (Preprocessed)
 
-The dashboard now defaults to **Preprocessed** mode. This mode uses simulated detections to provide an instant, smooth experience without taxing the server's CPU. It is highly recommended for public demos on Render Free tier.
+The dashboard now defaults to **Preprocessed Video** mode. This mode plays the generated annotated MP4s from `PREPROCESSED_CAMERA_VIDEO_ROOT`, so the main feed is as smooth as raw playback and does not need a YOLO request for every visible frame.
 
 To test real AI inference, switch the "Mode" selector to **Live AI Feed**.
 

@@ -95,14 +95,14 @@ const FLOW_EDGES = [
 ];
 
 const FALLBACK_CAMERAS = [
-  { id: "cam_checkin", name: "1. Check-in", video_found: true, video_url: "/api/cameras/cam_checkin/video" },
-  { id: "cam_access", name: "2. Control acces", video_found: true, video_url: "/api/cameras/cam_access/video" },
-  { id: "cam_security", name: "3. Control de securitate", video_found: true, video_url: "/api/cameras/cam_security/video" },
-  { id: "cam_to_t4", name: "4. Spre sala de pasageri T4", video_found: true, video_url: "/api/cameras/cam_to_t4/video" },
-  { id: "cam_boarding_gate", name: "5. Sala pasageri + poarta imbarcare", video_found: true, video_url: "/api/cameras/cam_boarding_gate/video" },
-  { id: "cam_jetbridge", name: "6. Interior burduf", video_found: true, video_url: "/api/cameras/cam_jetbridge/video" },
-  { id: "cam_checkin_3_8", name: "7. Check-in 3-8 Ansamblu", video_found: true, video_url: "/api/cameras/cam_checkin_3_8/video" },
-  { id: "cam_egate_business", name: "8. E Gate 13-14 Business", video_found: true, video_url: "/api/cameras/cam_egate_business/video" }
+  { id: "cam_checkin", name: "1. Check-in", video_found: true, video_url: "/api/cameras/cam_checkin/video", preprocessed_video_url: "/api/cameras/cam_checkin/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_access", name: "2. Control acces", video_found: true, video_url: "/api/cameras/cam_access/video", preprocessed_video_url: "/api/cameras/cam_access/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_security", name: "3. Control de securitate", video_found: true, video_url: "/api/cameras/cam_security/video", preprocessed_video_url: "/api/cameras/cam_security/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_to_t4", name: "4. Spre sala de pasageri T4", video_found: true, video_url: "/api/cameras/cam_to_t4/video", preprocessed_video_url: "/api/cameras/cam_to_t4/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_boarding_gate", name: "5. Sala pasageri + poarta imbarcare", video_found: true, video_url: "/api/cameras/cam_boarding_gate/video", preprocessed_video_url: "/api/cameras/cam_boarding_gate/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_jetbridge", name: "6. Interior burduf", video_found: true, video_url: "/api/cameras/cam_jetbridge/video", preprocessed_video_url: "/api/cameras/cam_jetbridge/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_checkin_3_8", name: "7. Check-in 3-8 Ansamblu", video_found: true, video_url: "/api/cameras/cam_checkin_3_8/video", preprocessed_video_url: "/api/cameras/cam_checkin_3_8/preprocessed-video", preprocessed_video_found: true },
+  { id: "cam_egate_business", name: "8. E Gate 13-14 Business", video_found: true, video_url: "/api/cameras/cam_egate_business/video", preprocessed_video_url: "/api/cameras/cam_egate_business/preprocessed-video", preprocessed_video_found: true }
 ];
 
 function el(id) {
@@ -194,6 +194,26 @@ function setVideoStatus(message, isError = false) {
 
 function cameraUrl(cameraId) {
   return `/api/cameras/${cameraId}/video`;
+}
+
+function preprocessedCameraUrl(cameraId) {
+  return `/api/cameras/${cameraId}/preprocessed-video`;
+}
+
+function videoSourceForMode(camera, mode = getFeedMode()) {
+  if (mode === "preprocessed" && camera.preprocessed_video_url && camera.preprocessed_video_found !== false) {
+    return {
+      src: camera.preprocessed_video_url,
+      status: "Playing preprocessed AI video",
+      missingProcessed: false
+    };
+  }
+
+  return {
+    src: camera.video_url || cameraUrl(camera.id),
+    status: mode === "preprocessed" ? "Preprocessed video missing; using raw local video" : "Playing raw local video",
+    missingProcessed: mode === "preprocessed"
+  };
 }
 
 function getFeedMode() {
@@ -320,13 +340,13 @@ function updatePerformancePanel(inferenceMs = null, backendStatus = null, nextDe
   const nextFrameNode = el("nextFrameInMs");
 
   if (feedModeStatus) {
-    if (currentMode === "preprocessed") feedModeStatus.textContent = "Demo";
+    if (currentMode === "preprocessed") feedModeStatus.textContent = "Preprocessed";
     else if (currentMode === "ai") feedModeStatus.textContent = "Live AI";
     else feedModeStatus.textContent = "Raw";
   }
   
   if (aiIntervalStatus) {
-    if (currentMode === "preprocessed") aiIntervalStatus.textContent = "Instant";
+    if (currentMode === "preprocessed") aiIntervalStatus.textContent = "Video";
     else if (currentMode === "ai") aiIntervalStatus.textContent = `Adaptive, min ${getMinimumAiIntervalMs()} ms`;
     else aiIntervalStatus.textContent = "Manual";
   }
@@ -361,7 +381,9 @@ function normalizeCamera(camera, index) {
     capacity: flow.capacity || 300,
     graph_position: graphPosition,
     map_position: mapPosition,
-    video_url: camera.video_url || cameraUrl(id)
+    video_url: camera.video_url || cameraUrl(id),
+    preprocessed_video_url: camera.preprocessed_video_url || fallback.preprocessed_video_url || preprocessedCameraUrl(id),
+    preprocessed_video_found: camera.preprocessed_video_found ?? fallback.preprocessed_video_found ?? true
   };
 }
 
@@ -392,6 +414,7 @@ async function loadCameras() {
   renderCameraMarkers();
   renderCameraListButtons();
   renderCorridors();
+  if (!selectedCameraId && cameras.length) selectCamera(cameras[0]);
   primeAllCameraStats();
 }
 
@@ -621,7 +644,7 @@ function updateAiFeedImage(result) {
   image.dataset.hasFrame = "true";
   
   const currentMode = getFeedMode();
-  image.style.display = (currentMode === "ai" || currentMode === "preprocessed") ? "block" : "none";
+  image.style.display = currentMode === "ai" ? "block" : "none";
 }
 
 function updateFeedVisibility() {
@@ -631,22 +654,23 @@ function updateFeedVisibility() {
   const overlay = el("feedOverlayStats");
   const analysisContent = el("analysisContent");
 
-  const isAiLike = feedMode === "ai" || feedMode === "preprocessed";
+  const isLiveAiImageMode = feedMode === "ai";
+  const isVideoMode = feedMode === "raw" || feedMode === "preprocessed";
 
   if (video) {
     video.loop = true;
     video.muted = true;
-    video.style.display = feedMode === "raw" ? "block" : "none";
+    video.style.display = isVideoMode ? "block" : "none";
     video.controls = feedMode === "raw";
   }
 
   if (image) {
     if (!image.getAttribute("src")) resetAiFeedImage();
-    image.style.display = isAiLike ? "block" : "none";
+    image.style.display = isLiveAiImageMode ? "block" : "none";
   }
 
   if (overlay) overlay.style.display = "block";
-  if (analysisContent) analysisContent.style.display = isAiLike ? "none" : "flex";
+  if (analysisContent) analysisContent.style.display = (feedMode === "ai" || feedMode === "preprocessed") ? "none" : "flex";
   updatePerformancePanel(lastInferenceMs || null, null, null);
   updateFeedOverlayStats();
 }
@@ -666,7 +690,7 @@ function updateFeedOverlayStats() {
   const counts = stats?.counts || {};
   const chips = Object.keys(counts).length ? Object.entries(counts) : [["waiting", "-"], ["outside", "-"]];
 
-  const modeLabel = feedMode === "preprocessed" ? "DEMO FEED" : (feedMode === "ai" ? "AI FEED" : "RAW FEED");
+  const modeLabel = feedMode === "preprocessed" ? "PREPROCESSED FEED" : (feedMode === "ai" ? "AI FEED" : "RAW FEED");
 
   overlay.innerHTML = `
     <div class="feed-overlay-top">
@@ -744,9 +768,11 @@ function switchVideoToCamera(camera) {
   }
 
   const resumeTime = cameraPlaybackState[camera.id] || 0;
-  const src = camera.video_url || cameraUrl(camera.id);
+  const mode = getFeedMode();
+  const source = videoSourceForMode(camera, mode);
+  const src = source.src;
 
-  setVideoStatus("Loading local video...");
+  setVideoStatus(mode === "preprocessed" ? "Loading preprocessed AI video..." : "Loading local video...");
   updateVideoTime(resumeTime);
 
   video.muted = true;
@@ -774,8 +800,13 @@ function switchVideoToCamera(camera) {
     if (playPromise && typeof playPromise.catch === "function") {
       playPromise
         .then(() => {
-          setVideoStatus(getFeedMode() === "ai" ? "AI feed warming up..." : "Playing raw local video");
-          if (getFeedMode() === "ai") startAiFeedLoop();
+          const currentMode = getFeedMode();
+          if (currentMode === "ai") {
+            setVideoStatus("AI feed warming up...");
+            startAiFeedLoop();
+          } else {
+            setVideoStatus(source.status, source.missingProcessed);
+          }
         })
         .catch(() => setVideoStatus("Press play to start video"));
     }
@@ -1099,7 +1130,7 @@ function stopAiFeedLoop() {
 }
 
 async function aiFeedTick() {
-  if (!aiFeedActive || (getFeedMode() !== "ai" && getFeedMode() !== "preprocessed") || !selectedCameraId) return;
+  if (!aiFeedActive || getFeedMode() !== "ai" || !selectedCameraId) return;
 
   if (!isAnalyzing) {
     const result = await analyzeSelectedCamera(false, {
@@ -1124,18 +1155,18 @@ async function aiFeedTick() {
   }
 
   const currentMode = getFeedMode();
-  const baseInterval = currentMode === "preprocessed" ? 1000 : getMinimumAiIntervalMs();
-  const nextDelay = Math.max(baseInterval, lastInferenceMs + (currentMode === "preprocessed" ? 100 : AI_SAFETY_MARGIN_MS));
+  const baseInterval = getMinimumAiIntervalMs();
+  const nextDelay = Math.max(baseInterval, lastInferenceMs + AI_SAFETY_MARGIN_MS);
   const backendStatus = backendStatusFromElapsed(lastInferenceMs);
   updatePerformancePanel(lastInferenceMs, backendStatus, nextDelay);
 
   if (backendStatus === "Slow" && currentMode === "ai") {
     setVideoStatus("AI feed throttled", true);
-  } else if (aiFeedActive && (currentMode === "ai" || currentMode === "preprocessed") && selectedCameraId) {
-    setVideoStatus(currentMode === "preprocessed" ? "Demo mode active" : "AI feed live");
+  } else if (aiFeedActive && currentMode === "ai" && selectedCameraId) {
+    setVideoStatus("AI feed live");
   }
 
-  if (aiFeedActive && (getFeedMode() === "ai" || getFeedMode() === "preprocessed") && selectedCameraId) {
+  if (aiFeedActive && getFeedMode() === "ai" && selectedCameraId) {
     aiFeedTimer = setTimeout(aiFeedTick, nextDelay);
   }
 }
@@ -1144,7 +1175,7 @@ function startAiFeedLoop() {
   stopAiFeedLoop();
   updateFeedVisibility();
   const currentMode = getFeedMode();
-  if ((currentMode !== "ai" && currentMode !== "preprocessed") || !selectedCameraId) return;
+  if (currentMode !== "ai" || !selectedCameraId) return;
 
   aiFeedActive = true;
   aiFeedTimer = setTimeout(aiFeedTick, 0);
@@ -1152,15 +1183,12 @@ function startAiFeedLoop() {
 
 function handleFeedModeChange() {
   feedMode = getFeedMode();
+  activeRequestSeq++;
+  stopAiFeedLoop();
   updateFeedVisibility();
 
-  if (feedMode === "ai" || feedMode === "preprocessed") {
-    startAiFeedLoop();
-  } else {
-    activeRequestSeq++;
-    stopAiFeedLoop();
-    setVideoStatus(selectedCameraId ? "Raw local video" : "");
-  }
+  if (selectedCamera) switchVideoToCamera(selectedCamera);
+  if (feedMode === "ai") startAiFeedLoop();
 
   setupAutoAnalyze();
 }
@@ -1176,7 +1204,12 @@ function setupAutoAnalyze() {
   }
 
   if (getFeedMode() === "ai") {
-    if (autoStatus) autoStatus.textContent = selectedCameraId ? "AI Feed active" : "AI Feed ready";
+    if (autoStatus) autoStatus.textContent = selectedCameraId ? "Live AI active" : "Live AI ready";
+    return;
+  }
+
+  if (getFeedMode() === "preprocessed") {
+    if (autoStatus) autoStatus.textContent = selectedCameraId ? "Preprocessed video active" : "Preprocessed ready";
     return;
   }
 

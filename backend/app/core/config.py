@@ -5,6 +5,10 @@ ZONES_PATH = os.path.join(BASE_DIR, "data", "zones.json")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 ANNOTATED_DIR = os.path.join(STATIC_DIR, "annotated")
 CAMERA_VIDEO_ROOT = os.getenv("CAMERA_VIDEO_ROOT", "test_assets/cameras")
+PREPROCESSED_CAMERA_VIDEO_ROOT = os.getenv(
+    "PREPROCESSED_CAMERA_VIDEO_ROOT",
+    "test_assets/cameras_preprocessed",
+)
 
 YOLO_MODEL_NAME = os.getenv("YOLO_MODEL_NAME", "yolov8n.pt")
 PERSON_CONFIDENCE_THRESHOLD = float(os.getenv("PERSON_CONFIDENCE_THRESHOLD", "0.30"))

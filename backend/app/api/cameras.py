@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, FileResponse
 import cv2
 from PIL import Image
 import numpy as np
-from app.core.config import ANNOTATED_DIR, CAMERA_VIDEO_ROOT
+from app.core.config import ANNOTATED_DIR, CAMERA_VIDEO_ROOT, PREPROCESSED_CAMERA_VIDEO_ROOT
 from app.services.vision import detect_people_and_count_zones, draw_annotations
 
 router = APIRouter()
@@ -26,31 +26,40 @@ def get_camera_folder_name(camera):
 
     folder = camera.get("folder", "")
     normalized = folder.replace("\\", "/").strip("/")
-    for marker in ("test_assets/cameras/", "test_assets/cameras_deploy/"):
+    for marker in ("test_assets/cameras/", "test_assets/cameras_deploy/", "test_assets/cameras_preprocessed/"):
         if normalized.startswith(marker):
             return normalized[len(marker):]
     return os.path.basename(normalized)
 
-def get_video_root():
-    return CAMERA_VIDEO_ROOT if os.path.isabs(CAMERA_VIDEO_ROOT) else os.path.join(BACKEND_DIR, CAMERA_VIDEO_ROOT)
+def resolve_video_root(root):
+    return root if os.path.isabs(root) else os.path.join(BACKEND_DIR, root)
 
-def get_camera_folder(camera):
+def get_video_root():
+    return resolve_video_root(CAMERA_VIDEO_ROOT)
+
+def get_preprocessed_video_root():
+    return resolve_video_root(PREPROCESSED_CAMERA_VIDEO_ROOT)
+
+def get_camera_folder(camera, root=None):
     folder_name = get_camera_folder_name(camera)
     if not folder_name:
         return None
-    return os.path.join(get_video_root(), folder_name)
+    return os.path.join(resolve_video_root(root or CAMERA_VIDEO_ROOT), folder_name)
 
-def get_video_path(camera):
+def get_video_path(camera, root=None):
     """Auto-detect first video file in camera folder."""
-    folder_path = get_camera_folder(camera)
+    folder_path = get_camera_folder(camera, root)
     if not folder_path:
         return None
     video_patterns = ["*.mp4", "*.avi", "*.mov", "*.mkv"]
     for pattern in video_patterns:
-        files = glob.glob(os.path.join(folder_path, pattern))
+        files = sorted(glob.glob(os.path.join(folder_path, pattern)))
         if files:
             return files[0]
     return None
+
+def get_preprocessed_video_path(camera):
+    return get_video_path(camera, PREPROCESSED_CAMERA_VIDEO_ROOT)
 
 def get_risk_level(counts):
     """Determine risk level based on total people count."""
@@ -68,11 +77,14 @@ def list_cameras():
     result = []
     for cam in cameras:
         video_path = get_video_path(cam)
+        preprocessed_video_path = get_preprocessed_video_path(cam)
         result.append({
             **cam,
             "folder_name": get_camera_folder_name(cam),
             "video_found": video_path is not None,
-            "video_url": f"/api/cameras/{cam['id']}/video"
+            "video_url": f"/api/cameras/{cam['id']}/video",
+            "preprocessed_video_found": preprocessed_video_path is not None,
+            "preprocessed_video_url": f"/api/cameras/{cam['id']}/preprocessed-video"
         })
     return result
 
@@ -82,17 +94,20 @@ def get_camera(camera_id: str):
     for cam in cameras:
         if cam["id"] == camera_id:
             video_path = get_video_path(cam)
+            preprocessed_video_path = get_preprocessed_video_path(cam)
             return {
                 **cam,
                 "folder_name": get_camera_folder_name(cam),
                 "video_found": video_path is not None,
-                "video_url": f"/api/cameras/{camera_id}/video"
+                "video_url": f"/api/cameras/{camera_id}/video",
+                "preprocessed_video_found": preprocessed_video_path is not None,
+                "preprocessed_video_url": f"/api/cameras/{camera_id}/preprocessed-video"
             }
     raise HTTPException(status_code=404, detail="Camera not found")
 
 @router.get("/cameras/{camera_id}/video")
 def get_video(camera_id: str):
-    """Serve video file for streaming in dashboard"""
+    """Serve raw/local video file for streaming in dashboard."""
     cameras = load_cameras()
     camera = None
     for cam in cameras:
@@ -107,7 +122,25 @@ def get_video(camera_id: str):
     if not video_path or not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail="Video file not found")
     
-    # Return video file with streaming support
+    return FileResponse(video_path, media_type="video/mp4")
+
+@router.get("/cameras/{camera_id}/preprocessed-video")
+def get_preprocessed_video(camera_id: str):
+    """Serve preprocessed AI-annotated video for smooth demo playback."""
+    cameras = load_cameras()
+    camera = None
+    for cam in cameras:
+        if cam["id"] == camera_id:
+            camera = cam
+            break
+
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    video_path = get_preprocessed_video_path(camera)
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Preprocessed video file not found")
+
     return FileResponse(video_path, media_type="video/mp4")
 
 # Global cache for video capture objects
