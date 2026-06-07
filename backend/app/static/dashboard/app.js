@@ -13,6 +13,8 @@ let allCameraAnalysisActive = false;
 let allCameraAnalysisTimer = null;
 let allCameraAnalysisIndex = 0;
 let isPrimingAllCameras = false;
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 3;
 
 const cameraPlaybackState = {};
 const cameraStats = {};
@@ -1099,13 +1101,24 @@ async function aiFeedTick() {
       showLoading: false
     });
 
-    const elapsed = Number(result?._client_elapsed_ms || result?.performance?.inference_ms || lastInferenceMs || getMinimumAiIntervalMs());
-    lastInferenceMs = elapsed;
+    if (result) {
+      consecutiveErrors = 0;
+      const elapsed = Number(result?._client_elapsed_ms || result?.performance?.inference_ms || lastInferenceMs || getMinimumAiIntervalMs());
+      lastInferenceMs = elapsed;
+    } else {
+      consecutiveErrors++;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        setVideoStatus("AI feed stopped due to errors", true);
+        showError("Too many connection errors. The server might be overwhelmed. Try refreshing or switching cameras.", true);
+        stopAiFeedLoop();
+        return;
+      }
+    }
   }
 
   const currentMode = getFeedMode();
-  const baseInterval = currentMode === "preprocessed" ? 200 : getMinimumAiIntervalMs();
-  const nextDelay = Math.max(baseInterval, lastInferenceMs + (currentMode === "preprocessed" ? 50 : AI_SAFETY_MARGIN_MS));
+  const baseInterval = currentMode === "preprocessed" ? 1000 : getMinimumAiIntervalMs();
+  const nextDelay = Math.max(baseInterval, lastInferenceMs + (currentMode === "preprocessed" ? 100 : AI_SAFETY_MARGIN_MS));
   const backendStatus = backendStatusFromElapsed(lastInferenceMs);
   updatePerformancePanel(lastInferenceMs, backendStatus, nextDelay);
 
