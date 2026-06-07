@@ -610,7 +610,9 @@ function updateAiFeedImage(result) {
   const separator = result.annotated_frame_url.includes("?") ? "&" : "?";
   image.src = `${result.annotated_frame_url}${separator}t=${Date.now()}`;
   image.dataset.hasFrame = "true";
-  image.style.display = getFeedMode() === "ai" ? "block" : "none";
+  
+  const currentMode = getFeedMode();
+  image.style.display = (currentMode === "ai" || currentMode === "preprocessed") ? "block" : "none";
 }
 
 function updateFeedVisibility() {
