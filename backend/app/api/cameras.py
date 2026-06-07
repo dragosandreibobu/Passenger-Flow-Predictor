@@ -110,6 +110,9 @@ def get_video(camera_id: str):
     # Return video file with streaming support
     return FileResponse(video_path, media_type="video/mp4")
 
+# Global cache for video capture objects
+_cap_cache = {}
+
 @router.post("/cameras/{camera_id}/analyze-snapshot")
 def analyze_snapshot(camera_id: str, timestamp_seconds: float = Query(0), demo: bool = Query(False)):
     cameras = load_cameras()
@@ -127,22 +130,29 @@ def analyze_snapshot(camera_id: str, timestamp_seconds: float = Query(0), demo: 
         raise HTTPException(status_code=400, detail="No video file found for this camera")
     
     try:
-        # Open video and extract frame
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise Exception(f"Could not open video file: {video_path}")
+        # Use cached capture object or open new one
+        if camera_id not in _cap_cache:
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                raise Exception(f"Could not open video file: {video_path}")
+            _cap_cache[camera_id] = cap
+        else:
+            cap = _cap_cache[camera_id]
             
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0:
-            fps = 25.0 # Fallback for some video containers
+            fps = 25.0
             
         frame_number = int(timestamp_seconds * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
-        cap.release()
         
+        # If read fails, try to reset the capture
         if not ret or frame is None:
-            raise Exception(f"Failed to read frame at {timestamp_seconds}s from {video_path}")
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                raise Exception(f"Failed to read frame at {timestamp_seconds}s from {video_path}")
         
         # Convert BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

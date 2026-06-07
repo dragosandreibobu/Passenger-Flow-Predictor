@@ -169,7 +169,14 @@ function clearError() {
 
 function showLoading(show) {
   const loading = el("loading");
-  if (loading) loading.style.display = show ? "flex" : "none";
+  if (loading) {
+    loading.style.display = show ? "flex" : "none";
+    // If it's a first-time load, it might take a while due to server spin-up
+    const loadingText = loading.querySelector("p");
+    if (loadingText) {
+      loadingText.textContent = show ? "Analyzing frame (server may be warming up)..." : "Analyzing frame...";
+    }
+  }
 
   const analyzeBtn = el("analyzeBtn");
   const manualAnalyzeBtn = el("manualAnalyzeBtn");
