@@ -54,20 +54,25 @@ If the speed filter is unsupported by the installed ffmpeg build, the script fal
 
 ## Regenerate Preprocessed Videos
 
-Preprocessed videos are smooth H.264 MP4s with burned-in demo annotations. They are separate from raw and deploy videos:
+Preprocessed videos are smooth H.264 MP4s with burned-in AI annotations. They are separate from raw and deploy videos:
 
 ```text
 backend/test_assets/cameras_preprocessed/
 ```
 
-From the backend folder:
+For accurate preprocessed recognitions, render with real YOLO offline instead of simulated demo detections. From the backend folder:
 
 ```powershell
 cd backend
-python prepare_preprocessed_videos.py --source test_assets/cameras_deploy --output test_assets/cameras_preprocessed --crf 28 --detections-fps 6 --force
+$env:YOLO_MODEL_NAME="yolov8s.pt"
+$env:INFERENCE_IMAGE_SIZE="640"
+$env:MAX_ANALYSIS_WIDTH="960"
+$env:PERSON_CONFIDENCE_THRESHOLD="0.25"
+$env:DEMO_MODE="false"
+python prepare_preprocessed_videos.py --source test_assets/cameras_deploy --output test_assets/cameras_preprocessed --crf 28 --detections-fps 8 --real-yolo --force
 ```
 
-The default generation mode uses fast deterministic annotations for smooth demo playback. To render real YOLO annotations offline instead, add `--real-yolo`; this is much slower.
+This keeps the output video at 25 FPS, but refreshes YOLO detections at 8 FPS and reuses those boxes between inference frames. It is CPU-expensive, but produces real detections instead of synthetic demo boxes. Use the non-`--real-yolo` mode only for quick local smoke tests.
 
 ## Switch Video Roots
 

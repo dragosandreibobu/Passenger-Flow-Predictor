@@ -20,7 +20,7 @@ CAMERAS_PATH = BACKEND_DIR / "app" / "data" / "cameras.json"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 
 sys.path.insert(0, str(BACKEND_DIR))
-from app.services.vision import detect_people_and_count_zones, draw_annotations  # noqa: E402
+from app.services.vision import detect_people_and_count_zones, draw_annotations, resize_for_analysis  # noqa: E402
 
 
 def resolve_path(raw_path):
@@ -118,9 +118,8 @@ def draw_demo_overlay(image, camera, counts, detections, timestamp_seconds, mode
     return Image.alpha_composite(image, overlay).convert("RGB")
 
 
-def annotate_frame(frame_bgr, camera, frame_index, fps, detection_hold_frames, use_demo):
+def analyze_frame(frame_bgr, camera, use_demo, bucket):
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    bucket = frame_index // max(1, detection_hold_frames)
     if use_demo:
         random.seed(f"{camera['id']}:{bucket}")
 
@@ -130,8 +129,22 @@ def annotate_frame(frame_bgr, camera, frame_index, fps, detection_hold_frames, u
         return_metadata=True,
         force_demo=use_demo,
     )
-    annotated = Image.fromarray(metadata["analysis_image"])
-    annotated = draw_annotations(annotated, detections, camera["zone_camera_id"], metadata["zone_scale"])
+    return {
+        "detections": detections,
+        "counts": counts,
+        "zone_scale": metadata["zone_scale"],
+    }
+
+
+def render_frame(frame_bgr, camera, frame_index, fps, analysis, use_demo):
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    analysis_image, current_zone_scale = resize_for_analysis(frame_rgb)
+    detections = analysis["detections"]
+    counts = analysis["counts"]
+    zone_scale = analysis.get("zone_scale", current_zone_scale)
+
+    annotated = Image.fromarray(analysis_image)
+    annotated = draw_annotations(annotated, detections, camera["zone_camera_id"], zone_scale)
     annotated = draw_demo_overlay(
         annotated,
         camera,
@@ -142,6 +155,11 @@ def annotate_frame(frame_bgr, camera, frame_index, fps, detection_hold_frames, u
     )
     return cv2.cvtColor(np.array(annotated), cv2.COLOR_RGB2BGR)
 
+
+def annotate_frame(frame_bgr, camera, frame_index, fps, detection_hold_frames, use_demo, cached_analysis=None):
+    bucket = frame_index // max(1, detection_hold_frames)
+    analysis = cached_analysis or analyze_frame(frame_bgr, camera, use_demo, bucket)
+    return render_frame(frame_bgr, camera, frame_index, fps, analysis, use_demo), analysis
 
 def transcode_to_h264(ffmpeg_path, temp_video, output_video, crf):
     command = [
@@ -189,6 +207,7 @@ def generate_camera_video(camera, source_root, output_root, args, ffmpeg_path):
     if args.max_seconds and args.max_seconds > 0:
         max_frames = min(max_frames, int(fps * args.max_seconds))
     detection_hold_frames = max(1, int(fps / max(1, args.detections_fps)))
+    use_demo = not args.real_yolo
 
     ok, frame = cap.read()
     if not ok or frame is None:
@@ -196,7 +215,7 @@ def generate_camera_video(camera, source_root, output_root, args, ffmpeg_path):
         print(f"FAIL {camera['id']}: empty source video {source_video}")
         return False
 
-    processed = annotate_frame(frame, camera, 0, fps, detection_hold_frames, not args.real_yolo)
+    processed, cached_analysis = annotate_frame(frame, camera, 0, fps, detection_hold_frames, use_demo)
     height, width = processed.shape[:2]
     temp_video = output_folder / f".{source_video.stem}_preprocessed_tmp.avi"
     writer = cv2.VideoWriter(str(temp_video), cv2.VideoWriter_fourcc(*"MJPG"), fps, (width, height))
@@ -208,16 +227,20 @@ def generate_camera_video(camera, source_root, output_root, args, ffmpeg_path):
     start = time.perf_counter()
     writer.write(processed)
     processed_frames = 1
+    inference_frames = 1
 
     while processed_frames < max_frames:
         ok, frame = cap.read()
         if not ok or frame is None:
             break
-        processed = annotate_frame(frame, camera, processed_frames, fps, detection_hold_frames, not args.real_yolo)
+        if processed_frames % detection_hold_frames == 0:
+            cached_analysis = analyze_frame(frame, camera, use_demo, processed_frames // detection_hold_frames)
+            inference_frames += 1
+        processed = render_frame(frame, camera, processed_frames, fps, cached_analysis, use_demo)
         writer.write(processed)
         processed_frames += 1
         if processed_frames % 250 == 0:
-            print(f"  {camera['id']}: {processed_frames}/{max_frames} frames")
+            print(f"  {camera['id']}: {processed_frames}/{max_frames} frames, {inference_frames} inference frames")
 
     cap.release()
     writer.release()
@@ -238,16 +261,15 @@ def generate_camera_video(camera, source_root, output_root, args, ffmpeg_path):
     print(f"OK {camera['id']}")
     print(f"  source: {source_video.relative_to(source_root)} ({format_size(source_size)})")
     print(f"  output: {output_video.relative_to(output_root)} ({format_size(output_size)})")
-    print(f"  frames: {processed_frames}, fps: {fps:.2f}, elapsed: {elapsed:.1f}s")
+    print(f"  frames: {processed_frames}, inference_frames: {inference_frames}, fps: {fps:.2f}, elapsed: {elapsed:.1f}s")
     return True
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generate smooth preprocessed AI camera videos.")
     parser.add_argument("--source", default="test_assets/cameras_deploy", help="Camera video root to read from.")
     parser.add_argument("--output", default="test_assets/cameras_preprocessed", help="Processed video root to write to.")
     parser.add_argument("--max-seconds", type=float, default=0, help="Maximum duration per video. 0 means full source video.")
-    parser.add_argument("--detections-fps", type=int, default=6, help="How often demo detections refresh inside the rendered video.")
+    parser.add_argument("--detections-fps", type=int, default=8, help="How often detections refresh inside the rendered video.")
     parser.add_argument("--crf", type=int, default=28, help="H.264 quality for processed MP4s.")
     parser.add_argument("--real-yolo", action="store_true", help="Use real YOLO instead of fast deterministic demo annotations.")
     parser.add_argument("--force", action="store_true", help="Regenerate existing processed videos.")
